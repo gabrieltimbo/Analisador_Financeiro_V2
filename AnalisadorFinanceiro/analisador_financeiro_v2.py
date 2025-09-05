@@ -7,6 +7,9 @@ Original file is located at
     https://colab.research.google.com/drive/1KSwhMO_2MysN-c6GuPZgl3tWv3ysM63s
 """
 
+# -*- coding: utf-8 -*-
+"""Analisador Financeiro V2 - Atualizado"""
+
 # --- Analisador Financeiro Web Profissional ---
 # Autor: Gabriel
 
@@ -29,7 +32,7 @@ if senha != "minhaSenhaSegura":  # Troque por uma senha segura
 # ==============================
 # 1️⃣ Funções de cálculo
 # ==============================
-def analise_financeira(contas_receber, ativo, passivo, dividas, lucro, caixa, prazo_faturamento):
+def analise_financeira(contas_receber, ativo, passivo, dividas, lucro, caixa, prazo_faturamento, perfil="normal"):
     indicadores = {}
     indicadores['Endividamento (%)'] = round((dividas / ativo) * 100, 2) if ativo else 0
     indicadores['Liquidez Corrente'] = round((ativo / passivo), 2) if passivo else 0
@@ -59,6 +62,15 @@ def analise_financeira(contas_receber, ativo, passivo, dividas, lucro, caixa, pr
     fator_rating = {"A":1.5, "B":1.3, "C":1.0, "D":0.7, "E":0.5}.get(rating, 1)
     fator_lucro = 1 + (lucro / ativo) if lucro >= 0 else 0.5
     limite_credito_ajustado = base_limite * fator_rating * fator_lucro
+
+    # Ajuste para perfil pessimista
+    if perfil == "pessimista":
+        limite_credito_ajustado *= 0.7  # Reduz 30% do limite
+
+    # Limite mínimo se Rating for E
+    if rating == "E":
+        limite_credito_ajustado = max(1, limite_credito_ajustado)
+
     indicadores['Limite de Crédito (R$)'] = round(limite_credito_ajustado, 2)
     return indicadores
 
@@ -92,12 +104,14 @@ with col2:
     caixa = st.number_input("Caixa disponível (R$)")
     prazo_faturamento = st.number_input("Prazo médio de faturamento (dias)", min_value=1)
 
+perfil = st.selectbox("Perfil de Crédito", ["normal", "pessimista"])
+
 # ==============================
 # 3️⃣ Botão de cálculo
 # ==============================
 if st.button("💡 Calcular Análise Financeira"):
 
-    resultado = analise_financeira(contas_receber, ativo, passivo, dividas, lucro, caixa, prazo_faturamento)
+    resultado = analise_financeira(contas_receber, ativo, passivo, dividas, lucro, caixa, prazo_faturamento, perfil=perfil)
 
     # ----- Cards de KPIs -----
     st.subheader("📊 KPIs Financeiros")
