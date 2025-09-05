@@ -8,7 +8,7 @@ Original file is located at
 """
 
 # -*- coding: utf-8 -*-
-"""Analisador Financeiro V6 - Completo com Caixa e Limite Ajustado"""
+"""Analisador Financeiro V7 - Limite ajustado por prazo e risco"""
 
 import streamlit as st
 import matplotlib.pyplot as plt
@@ -69,13 +69,24 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
         rating = "E"
     indicadores['Rating do Cliente'] = rating
 
-    # --- Limite de crédito ---
-    base_limite = (contas_receber / prazo_faturamento) * 30
+    # --- Limite de crédito inspirado em seguradora ---
+    # Base: quanto o cliente fatura mensalmente
+    fatura_mensal = (contas_receber / prazo_faturamento) * 30  
+
+    # Ajuste por prazo de faturamento: mais prazo → limite maior
+    fator_prazo = 1 + (min(prazo_faturamento / 60, 1))  # se 60 dias ou mais, fator = 2; se 30 dias, fator = 1.5
+
+    # Fator rating
     fator_rating = {"A":1.2, "B":1.0, "C":0.8, "D":0.5, "E":0.3}.get(rating,1)
+
+    # Fator margem (limitado a 15%)
     fator_margem = 1 + (min(indicadores['Margem Líquida (%)'], 15)/100)
+
+    # Fator caixa: quanto mais caixa disponível em relação à dívida, mais seguro
     fator_caixa = 0.5 + min(caixa / (dividas + 1e-6), 1)  # normaliza entre 0,5 e 1,5
 
-    limite_credito_ajustado = base_limite * fator_rating * fator_margem * fator_caixa
+    # Cálculo final
+    limite_credito_ajustado = fatura_mensal * fator_prazo * fator_rating * fator_margem * fator_caixa
 
     # Perfil pessimista
     if perfil.upper() == "PESSIMISTA":
