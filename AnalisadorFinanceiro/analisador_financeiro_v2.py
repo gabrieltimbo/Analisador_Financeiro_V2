@@ -8,7 +8,7 @@ Original file is located at
 """
 
 # -*- coding: utf-8 -*-
-"""Analisador Financeiro V7 - Limite ajustado por prazo e risco"""
+"""Analisador Financeiro V8 - Limite de Crédito Profissional"""
 
 import streamlit as st
 import matplotlib.pyplot as plt
@@ -69,24 +69,32 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
         rating = "E"
     indicadores['Rating do Cliente'] = rating
 
-    # --- Limite de crédito inspirado em seguradora ---
-    # Base: quanto o cliente fatura mensalmente
+    # --- Limite de crédito estilo seguradora ---
     fatura_mensal = (contas_receber / prazo_faturamento) * 30  
 
-    # Ajuste por prazo de faturamento: mais prazo → limite maior
-    fator_prazo = 1 + (min(prazo_faturamento / 60, 1))  # se 60 dias ou mais, fator = 2; se 30 dias, fator = 1.5
+    # Fator prazo: mais prazo → limite maior
+    fator_prazo = 1 + (min(prazo_faturamento / 60, 1))  # max 2x
 
     # Fator rating
     fator_rating = {"A":1.2, "B":1.0, "C":0.8, "D":0.5, "E":0.3}.get(rating,1)
 
-    # Fator margem (limitado a 15%)
+    # Fator margem (até 15%)
     fator_margem = 1 + (min(indicadores['Margem Líquida (%)'], 15)/100)
 
-    # Fator caixa: quanto mais caixa disponível em relação à dívida, mais seguro
-    fator_caixa = 0.5 + min(caixa / (dividas + 1e-6), 1)  # normaliza entre 0,5 e 1,5
+    # Fator caixa: quanto mais caixa em relação à dívida, mais seguro
+    fator_caixa = 0.5 + min(caixa / (dividas + 1e-6), 1)  # 0.5 a 1.5
 
-    # Cálculo final
-    limite_credito_ajustado = fatura_mensal * fator_prazo * fator_rating * fator_margem * fator_caixa
+    # Fator passivo circulante: muito endividado no curto prazo → limite menor
+    comp_passivo_circ = indicadores['Composição do Endividamento (%)'] / 100
+    if comp_passivo_circ > 0.6:  # >60% no curto prazo
+        fator_passivo = 0.7
+    elif comp_passivo_circ > 0.4:  # 40-60%
+        fator_passivo = 0.85
+    else:
+        fator_passivo = 1
+
+    # Limite final
+    limite_credito_ajustado = fatura_mensal * fator_prazo * fator_rating * fator_margem * fator_caixa * fator_passivo
 
     # Perfil pessimista
     if perfil.upper() == "PESSIMISTA":
@@ -191,7 +199,6 @@ if st.button("💡 Calcular Análise Financeira"):
     st.subheader("📄 Exportar PDF")
     pdf_buffer = io.BytesIO()
     with PdfPages(pdf_buffer) as pdf:
-        # Capa
         plt.figure(figsize=(8,6))
         plt.axis('off')
         plt.text(0.5,0.5,f"Relatório Financeiro do Cliente\n\nCliente: {nome_cliente}\nData: {data_analise}",
@@ -199,7 +206,6 @@ if st.button("💡 Calcular Análise Financeira"):
         pdf.savefig()
         plt.close()
 
-        # Gráfico KPIs
         plt.figure(figsize=(8,6))
         bars = plt.barh(kpis_labels, kpis_valores, color=['#4CAF50','#2196F3','#FF5722','#FFC107','#FF9800','#9C27B0','#8E44AD','#00BCD4'])
         for bar, valor, label in zip(bars, kpis_valores, kpis_labels):
@@ -213,7 +219,6 @@ if st.button("💡 Calcular Análise Financeira"):
         pdf.savefig()
         plt.close()
 
-        # Rating e recomendação
         plt.figure(figsize=(8,6))
         plt.axis('off')
         plt.text(0,0.5,f"⭐ Rating do Cliente: {rating}\n\n📝 Recomendação:\n{recomendacoes(rating)}", fontsize=14)
