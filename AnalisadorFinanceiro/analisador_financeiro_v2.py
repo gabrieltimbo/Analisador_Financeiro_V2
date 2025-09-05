@@ -8,7 +8,7 @@ Original file is located at
 """
 
 # -*- coding: utf-8 -*-
-"""Analisador Financeiro V3 - Atualizado"""
+"""Analisador Financeiro V5 - Completo com Liquidez, Endividamento, Rentabilidade e PDF"""
 
 import streamlit as st
 import matplotlib.pyplot as plt
@@ -17,32 +17,46 @@ import io
 import datetime
 
 # ==============================
-# 0️⃣ Segurança: Login simples
+# 0️⃣ Login simples
 # ==============================
 st.title("🔒 Analisador Financeiro de Clientes")
-
 senha = st.text_input("Digite a senha para acessar o app", type="password")
-if senha != "minhaSenhaSegura":  # Troque por uma senha segura
+if senha != "minhaSenhaSegura":
     st.warning("Senha incorreta! Acesso negado.")
     st.stop()
 
 # ==============================
-# 1️⃣ Funções de cálculo
+# 1️⃣ Função de análise financeira
 # ==============================
-def analise_financeira(contas_receber, ativo, passivo, dividas, lucro, caixa, prazo_faturamento, perfil="NORMAL"):
+def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total,
+                       passivo_circ, passivo_total, dividas, patrimonio, lucro, ebitda,
+                       prazo_faturamento, perfil="NORMAL"):
+
     indicadores = {}
-    indicadores['Endividamento (%)'] = round((dividas / ativo) * 100, 2) if ativo else 0
-    indicadores['Liquidez Corrente'] = round((ativo / passivo), 2) if passivo else 0
-    indicadores['Margem de Lucro (%)'] = round((lucro / ativo) * 100, 2) if ativo else 0
-    indicadores['Cobertura de Dívida (%)'] = round((lucro / dividas) * 100, 2) if dividas else 0
 
+    # --- Liquidez ---
+    indicadores['Liquidez Corrente'] = round((ativo_circ / passivo_circ) if passivo_circ else 0, 2)
+    indicadores['Liquidez Seca'] = round(((ativo_circ - estoque) / passivo_circ) if passivo_circ else 0, 2)
+
+    # --- Estrutura de Capital ---
+    indicadores['Endividamento Total (%)'] = round((passivo_total / ativo_total) * 100 if ativo_total else 0, 2)
+    indicadores['Composição do Endividamento (%)'] = round((passivo_circ / passivo_total) * 100 if passivo_total else 0, 2)
+
+    # --- Rentabilidade ---
+    indicadores['Margem Líquida (%)'] = round((lucro / receita) * 100 if receita else 0, 2)
+    indicadores['EBITDA / Receita (%)'] = round((ebitda / receita) * 100 if receita else 0, 2)
+    indicadores['ROE (%)'] = round((lucro / patrimonio) * 100 if patrimonio else 0, 2)
+
+    # --- Score para Rating ---
     score = 0
-    if indicadores['Endividamento (%)'] < 50: score += 2
+    if indicadores['Endividamento Total (%)'] < 50: score += 2
     if indicadores['Liquidez Corrente'] > 1.2: score += 2
-    if indicadores['Margem de Lucro (%)'] > 10: score += 2
-    if indicadores['Cobertura de Dívida (%)'] > 150: score += 2
-    if caixa > dividas * 0.5: score += 2
+    if indicadores['Liquidez Seca'] > 1: score += 1
+    if indicadores['Margem Líquida (%)'] > 10: score += 2
+    if indicadores['EBITDA / Receita (%)'] > 15: score += 1
+    if indicadores['ROE (%)'] > 10: score += 1
 
+    # Rating
     if score >= 9:
         rating = "A"
     elif score >= 7:
@@ -53,18 +67,16 @@ def analise_financeira(contas_receber, ativo, passivo, dividas, lucro, caixa, pr
         rating = "D"
     else:
         rating = "E"
-
     indicadores['Rating do Cliente'] = rating
+
+    # --- Limite de crédito ---
     base_limite = (contas_receber / prazo_faturamento) * 30
     fator_rating = {"A":1.5, "B":1.3, "C":1.0, "D":0.7, "E":0.5}.get(rating, 1)
-    fator_lucro = 1 + (lucro / ativo) if lucro >= 0 else 0.5
-    limite_credito_ajustado = base_limite * fator_rating * fator_lucro
+    fator_margem = 1 + (indicadores['Margem Líquida (%)'] / 100 if indicadores['Margem Líquida (%)']>0 else 0.5)
+    limite_credito_ajustado = base_limite * fator_rating * fator_margem
 
-    # Ajuste para perfil pessimista
     if perfil.upper() == "PESSIMISTA":
-        limite_credito_ajustado *= 0.7  # Reduz 30% do limite
-
-    # Limite fixo se Rating for E
+        limite_credito_ajustado *= 0.7
     if rating == "E":
         limite_credito_ajustado = 1
 
@@ -82,41 +94,49 @@ def recomendacoes(rating):
     return rec.get(rating, "Sem recomendação")
 
 # ==============================
-# 2️⃣ Layout Web Interativo
+# 2️⃣ Layout Interativo
 # ==============================
 st.subheader("📌 Informações do Cliente")
-
 col1, col2 = st.columns(2)
 
 with col1:
     nome_cliente = st.text_input("Nome do Cliente")
     data_analise = st.date_input("Data da Análise", datetime.date.today())
     contas_receber = st.number_input("Contas a Receber (R$)", min_value=0.0)
-    ativo = st.number_input("Ativo Total (R$)", min_value=0.0)
+    ativo_circ = st.number_input("Ativo Circulante (R$)", min_value=0.0)
+    estoque = st.number_input("Estoques (R$)", min_value=0.0)
+    ativo_total = st.number_input("Ativo Total (R$)", min_value=0.0)
+    receita = st.number_input("Receita Líquida (R$)", min_value=0.0)
+    ebitda = st.number_input("EBITDA (R$)", min_value=0.0)
 
 with col2:
-    passivo = st.number_input("Passivo Total (R$)", min_value=0.0)
-    dividas = st.number_input("Dívidas (R$)", min_value=0.0)
-    lucro = st.number_input("Lucro (R$)")
-    caixa = st.number_input("Caixa disponível (R$)")
+    passivo_circ = st.number_input("Passivo Circulante (R$)", min_value=0.0)
+    passivo_total = st.number_input("Passivo Total (R$)", min_value=0.0)
+    dividas = st.number_input("Dívidas Totais (R$)", min_value=0.0)
+    patrimonio = st.number_input("Patrimônio Líquido (R$)", min_value=0.0)
+    lucro = st.number_input("Lucro Líquido (R$)")
     prazo_faturamento = st.number_input("Prazo médio de faturamento (dias)", min_value=1)
 
-perfil = st.selectbox("PERFIL DE CRÉDITO", ["NORMAL", "PESSIMISTA"])
+perfil = st.selectbox("Perfil de crédito", ["Normal", "Pessimista"])
 
 # ==============================
 # 3️⃣ Botão de cálculo
 # ==============================
 if st.button("💡 Calcular Análise Financeira"):
+    resultado = analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total,
+                                   passivo_circ, passivo_total, dividas, patrimonio, lucro, ebitda,
+                                   prazo_faturamento, perfil=perfil)
 
-    resultado = analise_financeira(contas_receber, ativo, passivo, dividas, lucro, caixa, prazo_faturamento, perfil=perfil)
-
-    # ----- Cards de KPIs -----
+    # KPIs
     st.subheader("📊 KPIs Financeiros")
     kpis = {
-        "Endividamento (%)": ("🔴" if resultado['Endividamento (%)']>50 else "🟢", resultado['Endividamento (%)']),
         "Liquidez Corrente": ("🟢" if resultado['Liquidez Corrente']>1.2 else "🟠", resultado['Liquidez Corrente']),
-        "Margem de Lucro (%)": ("🟢" if resultado['Margem de Lucro (%)']>10 else "🟠", resultado['Margem de Lucro (%)']),
-        "Cobertura de Dívida (%)": ("🟢" if resultado['Cobertura de Dívida (%)']>150 else "🟠", resultado['Cobertura de Dívida (%)']),
+        "Liquidez Seca": ("🟢" if resultado['Liquidez Seca']>1 else "🟠", resultado['Liquidez Seca']),
+        "Endividamento Total (%)": ("🟢" if resultado['Endividamento Total (%)']<50 else "🔴", resultado['Endividamento Total (%)']),
+        "Composição do Endividamento (%)": ("🟢" if resultado['Composição do Endividamento (%)']<50 else "🟠", resultado['Composição do Endividamento (%)']),
+        "Margem Líquida (%)": ("🟢" if resultado['Margem Líquida (%)']>10 else "🟠", resultado['Margem Líquida (%)']),
+        "EBITDA / Receita (%)": ("🟢" if resultado['EBITDA / Receita (%)']>15 else "🟠", resultado['EBITDA / Receita (%)']),
+        "ROE (%)": ("🟢" if resultado['ROE (%)']>10 else "🟠", resultado['ROE (%)']),
         "Limite de Crédito Sugerido (R$)": ("🟢", resultado['Limite de Crédito Sugerido (R$)'])
     }
 
@@ -126,56 +146,64 @@ if st.button("💡 Calcular Análise Financeira"):
         else:
             st.metric(label=f"{emoji} {k}", value=f"{valor:.2f}")
 
-    # ----- Badge de rating -----
+    # Rating
     rating = resultado['Rating do Cliente']
     cores_rating = {"A":"green","B":"blue","C":"yellow","D":"orange","E":"red"}
     st.markdown(f"**⭐ Rating do Cliente:** <span style='color:{cores_rating[rating]}; font-size:20px'>{rating}</span>", unsafe_allow_html=True)
 
-    # ----- Recomendação -----
+    # Recomendações
     st.subheader("📝 Recomendações")
     st.info(recomendacoes(rating))
 
-    # ----- Gráfico de KPIs -----
+    # Gráfico KPIs
     st.subheader("📈 Gráfico de KPIs")
     kpis_labels = list(kpis.keys())
     kpis_valores = [v[1] for v in kpis.values()]
     fig, ax = plt.subplots()
-    bars = ax.barh(kpis_labels, kpis_valores, color=['#FF5722','#4CAF50','#2196F3','#FFC107','#9C27B0'])
+    bars = ax.barh(kpis_labels, kpis_valores, color=['#4CAF50','#2196F3','#FF5722','#FFC107','#FF9800','#9C27B0','#8E44AD','#00BCD4'])
     for bar, valor, label in zip(bars, kpis_valores, kpis_labels):
         if '(%)' in label:
             ax.text(bar.get_width()+0.5, bar.get_y()+0.3, f"{valor:.2f}%")
         elif 'R$' in label:
             ax.text(bar.get_width()+0.5, bar.get_y()+0.3, f"R$ {valor:,.2f}")
         else:
-            ax.text(bar.get_width()+0.5, bar.get_y()+0.3, f"{valor:,.2f}")
+            ax.text(bar.get_width()+0.5, bar.get_y()+0.3, f"{valor:.2f}")
     st.pyplot(fig)
 
-    # ----- Botão de gerar PDF (separado) -----
+    # PDF
     st.subheader("📄 Exportar PDF")
     pdf_buffer = io.BytesIO()
     with PdfPages(pdf_buffer) as pdf:
         # Capa
         plt.figure(figsize=(8,6))
         plt.axis('off')
-        texto_capa = f"Relatório Financeiro do Cliente\n\nCliente: {nome_cliente}\nData da Análise: {data_analise}"
-        plt.text(0.5,0.5,texto_capa, ha='center', va='center', fontsize=16)
+        plt.text(0.5,0.5,f"Relatório Financeiro do Cliente\n\nCliente: {nome_cliente}\nData: {data_analise}",
+                 ha='center', va='center', fontsize=16)
         pdf.savefig()
         plt.close()
 
-        # KPIs em gráfico
+        # Gráfico KPIs
         plt.figure(figsize=(8,6))
-        bars = plt.barh(kpis_labels, kpis_valores, color=['#FF5722','#4CAF50','#2196F3','#FFC107','#9C27B0'])
+        bars = plt.barh(kpis_labels, kpis_valores, color=['#4CAF50','#2196F3','#FF5722','#FFC107','#FF9800','#9C27B0','#8E44AD','#00BCD4'])
         for bar, valor, label in zip(bars, kpis_valores, kpis_labels):
             if '(%)' in label:
                 plt.text(bar.get_width()+0.5, bar.get_y()+0.3, f"{valor:.2f}%")
             elif 'R$' in label:
                 plt.text(bar.get_width()+0.5, bar.get_y()+0.3, f"R$ {valor:,.2f}")
             else:
-                plt.text(bar.get_width()+0.5, bar.get_y()+0.3, f"{valor:,.2f}")
+                plt.text(bar.get_width()+0.5, bar.get_y()+0.3, f"{valor:.2f}")
+        plt.title("📊 KPIs Financeiros")
         pdf.savefig()
         plt.close()
-    pdf_buffer.seek(0)
 
+        # Rating e recomendação
+        plt.figure(figsize=(8,6))
+        plt.axis('off')
+        plt.text(0,0.5,f"⭐ Rating do Cliente: {rating}\n\n📝 Recomendação:\n{recomendacoes(rating)}", fontsize=14)
+        pdf.savefig()
+        plt.close()
+
+    pdf_buffer.seek(0)
     st.download_button(
         label="📥 Baixar PDF",
         data=pdf_buffer,
