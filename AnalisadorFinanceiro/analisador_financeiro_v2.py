@@ -8,10 +8,7 @@ Original file is located at
 """
 
 # -*- coding: utf-8 -*-
-"""Analisador Financeiro V2 - Atualizado"""
-
-# --- Analisador Financeiro Web Profissional ---
-# Autor: Gabriel
+"""Analisador Financeiro V3 - Atualizado"""
 
 import streamlit as st
 import matplotlib.pyplot as plt
@@ -32,7 +29,7 @@ if senha != "minhaSenhaSegura":  # Troque por uma senha segura
 # ==============================
 # 1️⃣ Funções de cálculo
 # ==============================
-def analise_financeira(contas_receber, ativo, passivo, dividas, lucro, caixa, prazo_faturamento, perfil="normal"):
+def analise_financeira(contas_receber, ativo, passivo, dividas, lucro, caixa, prazo_faturamento, perfil="NORMAL"):
     indicadores = {}
     indicadores['Endividamento (%)'] = round((dividas / ativo) * 100, 2) if ativo else 0
     indicadores['Liquidez Corrente'] = round((ativo / passivo), 2) if passivo else 0
@@ -64,14 +61,14 @@ def analise_financeira(contas_receber, ativo, passivo, dividas, lucro, caixa, pr
     limite_credito_ajustado = base_limite * fator_rating * fator_lucro
 
     # Ajuste para perfil pessimista
-    if perfil == "pessimista":
+    if perfil.upper() == "PESSIMISTA":
         limite_credito_ajustado *= 0.7  # Reduz 30% do limite
 
-    # Limite mínimo se Rating for E
+    # Limite fixo se Rating for E
     if rating == "E":
-        limite_credito_ajustado = max(1, limite_credito_ajustado)
+        limite_credito_ajustado = 1
 
-    indicadores['Limite de Crédito (R$)'] = round(limite_credito_ajustado, 2)
+    indicadores['Limite de Crédito Sugerido (R$)'] = round(limite_credito_ajustado, 2)
     return indicadores
 
 def recomendacoes(rating):
@@ -104,7 +101,7 @@ with col2:
     caixa = st.number_input("Caixa disponível (R$)")
     prazo_faturamento = st.number_input("Prazo médio de faturamento (dias)", min_value=1)
 
-perfil = st.selectbox("Perfil de Crédito", ["normal", "pessimista"])
+perfil = st.selectbox("PERFIL DE CRÉDITO", ["NORMAL", "PESSIMISTA"])
 
 # ==============================
 # 3️⃣ Botão de cálculo
@@ -120,7 +117,7 @@ if st.button("💡 Calcular Análise Financeira"):
         "Liquidez Corrente": ("🟢" if resultado['Liquidez Corrente']>1.2 else "🟠", resultado['Liquidez Corrente']),
         "Margem de Lucro (%)": ("🟢" if resultado['Margem de Lucro (%)']>10 else "🟠", resultado['Margem de Lucro (%)']),
         "Cobertura de Dívida (%)": ("🟢" if resultado['Cobertura de Dívida (%)']>150 else "🟠", resultado['Cobertura de Dívida (%)']),
-        "Limite de Crédito (R$)": ("🟢", resultado['Limite de Crédito (R$)'])
+        "Limite de Crédito Sugerido (R$)": ("🟢", resultado['Limite de Crédito Sugerido (R$)'])
     }
 
     for k, (emoji, valor) in kpis.items():
@@ -153,35 +150,35 @@ if st.button("💡 Calcular Análise Financeira"):
             ax.text(bar.get_width()+0.5, bar.get_y()+0.3, f"{valor:,.2f}")
     st.pyplot(fig)
 
-    # ----- Botão de gerar PDF -----
+    # ----- Botão de gerar PDF (separado) -----
     st.subheader("📄 Exportar PDF")
-    if st.button("💾 Gerar PDF"):
-        pdf_buffer = io.BytesIO()
-        with PdfPages(pdf_buffer) as pdf:
-            # Capa
-            plt.figure(figsize=(8,6))
-            plt.axis('off')
-            texto_capa = f"Relatório Financeiro do Cliente\n\nCliente: {nome_cliente}\nData da Análise: {data_analise}"
-            plt.text(0.5,0.5,texto_capa, ha='center', va='center', fontsize=16)
-            pdf.savefig()
-            plt.close()
+    pdf_buffer = io.BytesIO()
+    with PdfPages(pdf_buffer) as pdf:
+        # Capa
+        plt.figure(figsize=(8,6))
+        plt.axis('off')
+        texto_capa = f"Relatório Financeiro do Cliente\n\nCliente: {nome_cliente}\nData da Análise: {data_analise}"
+        plt.text(0.5,0.5,texto_capa, ha='center', va='center', fontsize=16)
+        pdf.savefig()
+        plt.close()
 
-            # KPIs em gráfico
-            plt.figure(figsize=(8,6))
-            bars = plt.barh(kpis_labels, kpis_valores, color=['#FF5722','#4CAF50','#2196F3','#FFC107','#9C27B0'])
-            for bar, valor, label in zip(bars, kpis_valores, kpis_labels):
-                if '(%)' in label:
-                    plt.text(bar.get_width()+0.5, bar.get_y()+0.3, f"{valor:.2f}%")
-                elif 'R$' in label:
-                    plt.text(bar.get_width()+0.5, bar.get_y()+0.3, f"R$ {valor:,.2f}")
-                else:
-                    plt.text(bar.get_width()+0.5, bar.get_y()+0.3, f"{valor:,.2f}")
-            pdf.savefig()
-            plt.close()
-        pdf_buffer.seek(0)
-        st.download_button(
-            label="📥 Baixar PDF",
-            data=pdf_buffer,
-            file_name=f"Relatorio_{nome_cliente}.pdf",
-            mime="application/pdf"
-        )
+        # KPIs em gráfico
+        plt.figure(figsize=(8,6))
+        bars = plt.barh(kpis_labels, kpis_valores, color=['#FF5722','#4CAF50','#2196F3','#FFC107','#9C27B0'])
+        for bar, valor, label in zip(bars, kpis_valores, kpis_labels):
+            if '(%)' in label:
+                plt.text(bar.get_width()+0.5, bar.get_y()+0.3, f"{valor:.2f}%")
+            elif 'R$' in label:
+                plt.text(bar.get_width()+0.5, bar.get_y()+0.3, f"R$ {valor:,.2f}")
+            else:
+                plt.text(bar.get_width()+0.5, bar.get_y()+0.3, f"{valor:,.2f}")
+        pdf.savefig()
+        plt.close()
+    pdf_buffer.seek(0)
+
+    st.download_button(
+        label="📥 Baixar PDF",
+        data=pdf_buffer,
+        file_name=f"Relatorio_{nome_cliente}.pdf",
+        mime="application/pdf"
+    )
