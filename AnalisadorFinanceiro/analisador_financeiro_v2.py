@@ -8,7 +8,7 @@ Original file is located at
 """
 
 # -*- coding: utf-8 -*-
-"""Analisador Financeiro V5 - Completo com Liquidez, Endividamento, Rentabilidade e PDF"""
+"""Analisador Financeiro V6 - Completo com Caixa e Limite Ajustado"""
 
 import streamlit as st
 import matplotlib.pyplot as plt
@@ -30,7 +30,7 @@ if senha != "minhaSenhaSegura":
 # ==============================
 def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total,
                        passivo_circ, passivo_total, dividas, patrimonio, lucro, ebitda,
-                       prazo_faturamento, perfil="NORMAL"):
+                       caixa, prazo_faturamento, perfil="NORMAL"):
 
     indicadores = {}
 
@@ -71,12 +71,17 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
 
     # --- Limite de crédito ---
     base_limite = (contas_receber / prazo_faturamento) * 30
-    fator_rating = {"A":1.5, "B":1.3, "C":1.0, "D":0.7, "E":0.5}.get(rating, 1)
-    fator_margem = 1 + (indicadores['Margem Líquida (%)'] / 100 if indicadores['Margem Líquida (%)']>0 else 0.5)
-    limite_credito_ajustado = base_limite * fator_rating * fator_margem
+    fator_rating = {"A":1.2, "B":1.0, "C":0.8, "D":0.5, "E":0.3}.get(rating,1)
+    fator_margem = 1 + (min(indicadores['Margem Líquida (%)'], 15)/100)
+    fator_caixa = 0.5 + min(caixa / (dividas + 1e-6), 1)  # normaliza entre 0,5 e 1,5
 
+    limite_credito_ajustado = base_limite * fator_rating * fator_margem * fator_caixa
+
+    # Perfil pessimista
     if perfil.upper() == "PESSIMISTA":
         limite_credito_ajustado *= 0.7
+
+    # Limite mínimo se Rating E
     if rating == "E":
         limite_credito_ajustado = 1
 
@@ -108,6 +113,7 @@ with col1:
     ativo_total = st.number_input("Ativo Total (R$)", min_value=0.0)
     receita = st.number_input("Receita Líquida (R$)", min_value=0.0)
     ebitda = st.number_input("EBITDA (R$)", min_value=0.0)
+    caixa = st.number_input("Caixa Disponível (R$)", min_value=0.0)
 
 with col2:
     passivo_circ = st.number_input("Passivo Circulante (R$)", min_value=0.0)
@@ -117,7 +123,7 @@ with col2:
     lucro = st.number_input("Lucro Líquido (R$)")
     prazo_faturamento = st.number_input("Prazo médio de faturamento (dias)", min_value=1)
 
-perfil = st.selectbox("Perfil de crédito", ["Normal", "Pessimista"])
+perfil = st.selectbox("PERFIL DE CRÉDITO", ["NORMAL", "PESSIMISTA"])
 
 # ==============================
 # 3️⃣ Botão de cálculo
@@ -125,7 +131,7 @@ perfil = st.selectbox("Perfil de crédito", ["Normal", "Pessimista"])
 if st.button("💡 Calcular Análise Financeira"):
     resultado = analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total,
                                    passivo_circ, passivo_total, dividas, patrimonio, lucro, ebitda,
-                                   prazo_faturamento, perfil=perfil)
+                                   caixa, prazo_faturamento, perfil=perfil)
 
     # KPIs
     st.subheader("📊 KPIs Financeiros")
