@@ -8,7 +8,7 @@ Original file is located at
 """
 
 # -*- coding: utf-8 -*-
-"""Analisador Financeiro V9 - Limite Realista + PDF gerencial"""
+"""Analisador Financeiro V10 - Limite Realista + Alavancagem + PDF"""
 
 import streamlit as st
 from matplotlib.backends.backend_pdf import PdfPages
@@ -73,16 +73,10 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
     # --- Limite de crédito realista ---
     fatura_mensal = (contas_receber / prazo_faturamento) * 30  
 
-    # Fator prazo: máximo 1.2x
-    fator_prazo = 1 + min(prazo_faturamento / 60, 0.2)  
-
-    # Fator rating
+    # Fatores
+    fator_prazo = 1 + min(prazo_faturamento / 60, 0.2)
     fator_rating = {"A":1.2, "B":1.0, "C":0.8, "D":0.5, "E":0.3}.get(rating,1)
-
-    # Fator margem: até 15%
     fator_margem = 1 + (min(indicadores['Margem Líquida (%)'], 15)/100)
-
-    # Fator caixa: de 0.3 a 0.8, conservador
     fator_caixa = 0.3 + min(caixa / (dividas + 1e-6), 0.5)
 
     # Fator passivo circulante
@@ -94,8 +88,17 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
     else:
         fator_passivo = 1
 
+    # Fator alavancagem
+    alav = indicadores['Alavancagem (Dívida / PL)']
+    if alav < 2:
+        fator_alav = 1
+    elif alav <= 5:
+        fator_alav = 0.8
+    else:
+        fator_alav = 0.5
+
     # Limite final
-    limite_credito_ajustado = fatura_mensal * fator_prazo * fator_rating * fator_margem * fator_caixa * fator_passivo
+    limite_credito_ajustado = fatura_mensal * fator_prazo * fator_rating * fator_margem * fator_caixa * fator_passivo * fator_alav
 
     # Perfil pessimista
     if perfil.upper() == "PESSIMISTA":
@@ -153,13 +156,25 @@ if st.button("💡 Calcular Análise Financeira"):
                                    passivo_circ, passivo_total, dividas, patrimonio, lucro, ebitda,
                                    caixa, prazo_faturamento, perfil=perfil)
 
-    # Exibir KPIs
+    # KPIs com emojis
     st.subheader("📊 KPIs Financeiros")
-    for k, v in resultado.items():
+    kpis = {
+        "Liquidez Corrente": ("🟢" if resultado['Liquidez Corrente']>1.2 else "🟠", resultado['Liquidez Corrente']),
+        "Liquidez Seca": ("🟢" if resultado['Liquidez Seca']>1 else "🟠", resultado['Liquidez Seca']),
+        "Endividamento Total (%)": ("🟢" if resultado['Endividamento Total (%)']<50 else "🔴", resultado['Endividamento Total (%)']),
+        "Composição do Endividamento (%)": ("🟢" if resultado['Composição do Endividamento (%)']<50 else "🟠", resultado['Composição do Endividamento (%)']),
+        "Alavancagem (Dívida / PL)": ("🟠" if resultado['Alavancagem (Dívida / PL)']>5 else "🟢", resultado['Alavancagem (Dívida / PL)']),
+        "Margem Líquida (%)": ("🟢" if resultado['Margem Líquida (%)']>10 else "🟠", resultado['Margem Líquida (%)']),
+        "EBITDA / Receita (%)": ("🟢" if resultado['EBITDA / Receita (%)']>15 else "🟠", resultado['EBITDA / Receita (%)']),
+        "ROE (%)": ("🟢" if resultado['ROE (%)']>10 else "🟠", resultado['ROE (%)']),
+        "Limite de Crédito Sugerido (R$)": ("🟢", resultado['Limite de Crédito Sugerido (R$)'])
+    }
+
+    for k, (emoji, valor) in kpis.items():
         if "R$" in k:
-            st.metric(label=k, value=f"R$ {v:,.2f}")
+            st.metric(label=f"{emoji} {k}", value=f"R$ {valor:,.2f}")
         else:
-            st.metric(label=k, value=v)
+            st.metric(label=f"{emoji} {k}", value=f"{valor:.2f}")
 
     # Rating e recomendação
     rating = resultado['Rating do Cliente']
@@ -169,28 +184,39 @@ if st.button("💡 Calcular Análise Financeira"):
     st.info(recomendacoes(rating))
 
     # ==============================
-    # 4️⃣ Botão de gerar PDF gerencial
+    # 4️⃣ PDF gerencial
     # ==============================
     st.subheader("📄 Exportar Relatório em PDF")
     pdf_buffer = io.BytesIO()
     with PdfPages(pdf_buffer) as pdf:
-        # Página inicial
         plt.figure(figsize=(8,10))
         plt.axis('off')
         texto = f"Relatório Financeiro do Cliente\n\nCliente: {nome_cliente}\nData da Análise: {data_analise}\n\n"
+        texto += f"=== Inputs fornecidos ===\n"
+        texto += f"Contas a Receber: R$ {contas_receber:,.2f}\n"
+        texto += f"Ativo Circulante: R$ {ativo_circ:,.2f}\n"
+        texto += f"Estoques: R$ {estoque:,.2f}\n"
+        texto += f"Ativo Total: R$ {ativo_total:,.2f}\n"
+        texto += f"Receita Líquida: R$ {receita:,.2f}\n"
+        texto += f"EBITDA: R$ {ebitda:,.2f}\n"
+        texto += f"Caixa Disponível: R$ {caixa:,.2f}\n"
+        texto += f"Passivo Circulante: R$ {passivo_circ:,.2f}\n"
+        texto += f"Passivo Total: R$ {passivo_total:,.2f}\n"
+        texto += f"Dívidas Totais: R$ {dividas:,.2f}\n"
+        texto += f"Patrimônio Líquido: R$ {patrimonio:,.2f}\n"
+        texto += f"Lucro Líquido: R$ {lucro:,.2f}\n"
+        texto += f"Prazo médio de faturamento: {prazo_faturamento} dias\n"
+        texto += f"Perfil de Crédito: {perfil}\n\n"
+        texto += f"=== Indicadores Calculados ===\n"
         for k, v in resultado.items():
-            if "R$" in k:
-                texto += f"{k}: R$ {v:,.2f}\n"
-            else:
-                texto += f"{k}: {v}\n"
-        texto += f"\nRecomendação: {recomendacoes(rating)}"
-        plt.text(0.01,0.99, texto, ha='left', va='top', fontsize=12, wrap=True)
+            texto += f"{k}: {v}\n"
+        plt.text(0, 1, texto, ha='left', va='top', fontsize=10, wrap=True)
         pdf.savefig()
         plt.close()
-
     pdf_buffer.seek(0)
+
     st.download_button(
-        label="📥 Baixar PDF Gerencial",
+        label="📥 Baixar PDF",
         data=pdf_buffer,
         file_name=f"Relatorio_{nome_cliente}.pdf",
         mime="application/pdf"
