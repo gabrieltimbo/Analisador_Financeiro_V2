@@ -8,7 +8,7 @@ Original file is located at
 """
 
 # -*- coding: utf-8 -*-
-"""Analisador Financeiro V8 - Limite de Crédito Profissional"""
+"""Analisador Financeiro V9 - Limite Realista com Alavancagem"""
 
 import streamlit as st
 import matplotlib.pyplot as plt
@@ -17,7 +17,7 @@ import io
 import datetime
 
 # ==============================
-# 0️⃣ Login simples
+# 0️⃣ Login
 # ==============================
 st.title("🔒 Analisador Financeiro de Clientes")
 senha = st.text_input("Digite a senha para acessar o app", type="password")
@@ -41,6 +41,7 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
     # --- Estrutura de Capital ---
     indicadores['Endividamento Total (%)'] = round((passivo_total / ativo_total) * 100 if ativo_total else 0, 2)
     indicadores['Composição do Endividamento (%)'] = round((passivo_circ / passivo_total) * 100 if passivo_total else 0, 2)
+    indicadores['Alavancagem (Dívida / PL)'] = round((dividas / patrimonio) if patrimonio else 0, 2)
 
     # --- Rentabilidade ---
     indicadores['Margem Líquida (%)'] = round((lucro / receita) * 100 if receita else 0, 2)
@@ -69,27 +70,27 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
         rating = "E"
     indicadores['Rating do Cliente'] = rating
 
-    # --- Limite de crédito estilo seguradora ---
+    # --- Limite de crédito realista ---
     fatura_mensal = (contas_receber / prazo_faturamento) * 30  
 
-    # Fator prazo: mais prazo → limite maior
-    fator_prazo = 1 + (min(prazo_faturamento / 60, 1))  # max 2x
+    # Fator prazo: máximo 1.2x
+    fator_prazo = 1 + min(prazo_faturamento / 60, 0.2)  
 
     # Fator rating
     fator_rating = {"A":1.2, "B":1.0, "C":0.8, "D":0.5, "E":0.3}.get(rating,1)
 
-    # Fator margem (até 15%)
+    # Fator margem: até 15%
     fator_margem = 1 + (min(indicadores['Margem Líquida (%)'], 15)/100)
 
-    # Fator caixa: quanto mais caixa em relação à dívida, mais seguro
-    fator_caixa = 0.5 + min(caixa / (dividas + 1e-6), 1)  # 0.5 a 1.5
+    # Fator caixa: de 0.3 a 0.8, conservador
+    fator_caixa = 0.3 + min(caixa / (dividas + 1e-6), 0.5)
 
-    # Fator passivo circulante: muito endividado no curto prazo → limite menor
+    # Fator passivo circulante: >50% → reduzir limite para 0.5x
     comp_passivo_circ = indicadores['Composição do Endividamento (%)'] / 100
-    if comp_passivo_circ > 0.6:  # >60% no curto prazo
+    if comp_passivo_circ > 0.6:
+        fator_passivo = 0.5
+    elif comp_passivo_circ > 0.4:
         fator_passivo = 0.7
-    elif comp_passivo_circ > 0.4:  # 40-60%
-        fator_passivo = 0.85
     else:
         fator_passivo = 1
 
@@ -159,6 +160,7 @@ if st.button("💡 Calcular Análise Financeira"):
         "Liquidez Seca": ("🟢" if resultado['Liquidez Seca']>1 else "🟠", resultado['Liquidez Seca']),
         "Endividamento Total (%)": ("🟢" if resultado['Endividamento Total (%)']<50 else "🔴", resultado['Endividamento Total (%)']),
         "Composição do Endividamento (%)": ("🟢" if resultado['Composição do Endividamento (%)']<50 else "🟠", resultado['Composição do Endividamento (%)']),
+        "Alavancagem (Dívida / PL)": ("🟠" if resultado['Alavancagem (Dívida / PL)']>5 else "🟢", resultado['Alavancagem (Dívida / PL)']),
         "Margem Líquida (%)": ("🟢" if resultado['Margem Líquida (%)']>10 else "🟠", resultado['Margem Líquida (%)']),
         "EBITDA / Receita (%)": ("🟢" if resultado['EBITDA / Receita (%)']>15 else "🟠", resultado['EBITDA / Receita (%)']),
         "ROE (%)": ("🟢" if resultado['ROE (%)']>10 else "🟠", resultado['ROE (%)']),
@@ -179,56 +181,3 @@ if st.button("💡 Calcular Análise Financeira"):
     # Recomendações
     st.subheader("📝 Recomendações")
     st.info(recomendacoes(rating))
-
-    # Gráfico KPIs
-    st.subheader("📈 Gráfico de KPIs")
-    kpis_labels = list(kpis.keys())
-    kpis_valores = [v[1] for v in kpis.values()]
-    fig, ax = plt.subplots()
-    bars = ax.barh(kpis_labels, kpis_valores, color=['#4CAF50','#2196F3','#FF5722','#FFC107','#FF9800','#9C27B0','#8E44AD','#00BCD4'])
-    for bar, valor, label in zip(bars, kpis_valores, kpis_labels):
-        if '(%)' in label:
-            ax.text(bar.get_width()+0.5, bar.get_y()+0.3, f"{valor:.2f}%")
-        elif 'R$' in label:
-            ax.text(bar.get_width()+0.5, bar.get_y()+0.3, f"R$ {valor:,.2f}")
-        else:
-            ax.text(bar.get_width()+0.5, bar.get_y()+0.3, f"{valor:.2f}")
-    st.pyplot(fig)
-
-    # PDF
-    st.subheader("📄 Exportar PDF")
-    pdf_buffer = io.BytesIO()
-    with PdfPages(pdf_buffer) as pdf:
-        plt.figure(figsize=(8,6))
-        plt.axis('off')
-        plt.text(0.5,0.5,f"Relatório Financeiro do Cliente\n\nCliente: {nome_cliente}\nData: {data_analise}",
-                 ha='center', va='center', fontsize=16)
-        pdf.savefig()
-        plt.close()
-
-        plt.figure(figsize=(8,6))
-        bars = plt.barh(kpis_labels, kpis_valores, color=['#4CAF50','#2196F3','#FF5722','#FFC107','#FF9800','#9C27B0','#8E44AD','#00BCD4'])
-        for bar, valor, label in zip(bars, kpis_valores, kpis_labels):
-            if '(%)' in label:
-                plt.text(bar.get_width()+0.5, bar.get_y()+0.3, f"{valor:.2f}%")
-            elif 'R$' in label:
-                plt.text(bar.get_width()+0.5, bar.get_y()+0.3, f"R$ {valor:,.2f}")
-            else:
-                plt.text(bar.get_width()+0.5, bar.get_y()+0.3, f"{valor:.2f}")
-        plt.title("📊 KPIs Financeiros")
-        pdf.savefig()
-        plt.close()
-
-        plt.figure(figsize=(8,6))
-        plt.axis('off')
-        plt.text(0,0.5,f"⭐ Rating do Cliente: {rating}\n\n📝 Recomendação:\n{recomendacoes(rating)}", fontsize=14)
-        pdf.savefig()
-        plt.close()
-
-    pdf_buffer.seek(0)
-    st.download_button(
-        label="📥 Baixar PDF",
-        data=pdf_buffer,
-        file_name=f"Relatorio_{nome_cliente}.pdf",
-        mime="application/pdf"
-    )
