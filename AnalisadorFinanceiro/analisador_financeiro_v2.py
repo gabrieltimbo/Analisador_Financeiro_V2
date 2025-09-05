@@ -8,11 +8,11 @@ Original file is located at
 """
 
 # -*- coding: utf-8 -*-
-"""Analisador Financeiro V9 - Limite Realista com Alavancagem"""
+"""Analisador Financeiro V9 - Limite Realista + PDF gerencial"""
 
 import streamlit as st
-import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.pyplot as plt
 import io
 import datetime
 
@@ -85,7 +85,7 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
     # Fator caixa: de 0.3 a 0.8, conservador
     fator_caixa = 0.3 + min(caixa / (dividas + 1e-6), 0.5)
 
-    # Fator passivo circulante: >50% → reduzir limite para 0.5x
+    # Fator passivo circulante
     comp_passivo_circ = indicadores['Composição do Endividamento (%)'] / 100
     if comp_passivo_circ > 0.6:
         fator_passivo = 0.5
@@ -153,31 +153,45 @@ if st.button("💡 Calcular Análise Financeira"):
                                    passivo_circ, passivo_total, dividas, patrimonio, lucro, ebitda,
                                    caixa, prazo_faturamento, perfil=perfil)
 
-    # KPIs
+    # Exibir KPIs
     st.subheader("📊 KPIs Financeiros")
-    kpis = {
-        "Liquidez Corrente": ("🟢" if resultado['Liquidez Corrente']>1.2 else "🟠", resultado['Liquidez Corrente']),
-        "Liquidez Seca": ("🟢" if resultado['Liquidez Seca']>1 else "🟠", resultado['Liquidez Seca']),
-        "Endividamento Total (%)": ("🟢" if resultado['Endividamento Total (%)']<50 else "🔴", resultado['Endividamento Total (%)']),
-        "Composição do Endividamento (%)": ("🟢" if resultado['Composição do Endividamento (%)']<50 else "🟠", resultado['Composição do Endividamento (%)']),
-        "Alavancagem (Dívida / PL)": ("🟠" if resultado['Alavancagem (Dívida / PL)']>5 else "🟢", resultado['Alavancagem (Dívida / PL)']),
-        "Margem Líquida (%)": ("🟢" if resultado['Margem Líquida (%)']>10 else "🟠", resultado['Margem Líquida (%)']),
-        "EBITDA / Receita (%)": ("🟢" if resultado['EBITDA / Receita (%)']>15 else "🟠", resultado['EBITDA / Receita (%)']),
-        "ROE (%)": ("🟢" if resultado['ROE (%)']>10 else "🟠", resultado['ROE (%)']),
-        "Limite de Crédito Sugerido (R$)": ("🟢", resultado['Limite de Crédito Sugerido (R$)'])
-    }
-
-    for k, (emoji, valor) in kpis.items():
+    for k, v in resultado.items():
         if "R$" in k:
-            st.metric(label=f"{emoji} {k}", value=f"R$ {valor:,.2f}")
+            st.metric(label=k, value=f"R$ {v:,.2f}")
         else:
-            st.metric(label=f"{emoji} {k}", value=f"{valor:.2f}")
+            st.metric(label=k, value=v)
 
-    # Rating
+    # Rating e recomendação
     rating = resultado['Rating do Cliente']
-    cores_rating = {"A":"green","B":"blue","C":"yellow","D":"orange","E":"red"}
-    st.markdown(f"**⭐ Rating do Cliente:** <span style='color:{cores_rating[rating]}; font-size:20px'>{rating}</span>", unsafe_allow_html=True)
-
-    # Recomendações
+    st.subheader("⭐ Rating do Cliente")
+    st.markdown(f"**{rating}**", unsafe_allow_html=True)
     st.subheader("📝 Recomendações")
     st.info(recomendacoes(rating))
+
+    # ==============================
+    # 4️⃣ Botão de gerar PDF gerencial
+    # ==============================
+    st.subheader("📄 Exportar Relatório em PDF")
+    pdf_buffer = io.BytesIO()
+    with PdfPages(pdf_buffer) as pdf:
+        # Página inicial
+        plt.figure(figsize=(8,10))
+        plt.axis('off')
+        texto = f"Relatório Financeiro do Cliente\n\nCliente: {nome_cliente}\nData da Análise: {data_analise}\n\n"
+        for k, v in resultado.items():
+            if "R$" in k:
+                texto += f"{k}: R$ {v:,.2f}\n"
+            else:
+                texto += f"{k}: {v}\n"
+        texto += f"\nRecomendação: {recomendacoes(rating)}"
+        plt.text(0.01,0.99, texto, ha='left', va='top', fontsize=12, wrap=True)
+        pdf.savefig()
+        plt.close()
+
+    pdf_buffer.seek(0)
+    st.download_button(
+        label="📥 Baixar PDF Gerencial",
+        data=pdf_buffer,
+        file_name=f"Relatorio_{nome_cliente}.pdf",
+        mime="application/pdf"
+    )
