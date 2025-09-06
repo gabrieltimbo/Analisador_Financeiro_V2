@@ -8,7 +8,7 @@ Original file is located at
 """
 
 # -*- coding: utf-8 -*-
-"""Analisador Financeiro"""
+"""Analisador Financeiro V6"""
 
 import streamlit as st
 import matplotlib.pyplot as plt
@@ -17,7 +17,7 @@ import io
 import datetime
 
 # ==============================
-# 0️⃣ Login + Nome do Analista
+# 0️⃣ Login + Idioma + Nome do Analista
 # ==============================
 st.title("🔒 Analisador Financeiro de Clientes")
 senha = st.text_input("Digite a senha para acessar o app", type="password")
@@ -25,10 +25,39 @@ if senha != "minhaSenhaSegura":
     st.warning("Senha incorreta! Acesso negado.")
     st.stop()
 
+# Seleção de idioma
+idioma = st.radio("Idioma / Language", ("🇧🇷 Português", "🇺🇸 English"))
+
+# Função para textos de acordo com idioma
+def text(key):
+    textos = {
+        "pt": {
+            "nome_analista": "Nome do Analista",
+            "informe_analista": "Por favor, informe o nome do analista para prosseguir.",
+            "informacoes_cliente": "📌 Informações do Cliente",
+            "perfil_credito": "PERFIL DE CRÉDITO",
+            "risco_credito_externo": "Risco de Crédito Externo",
+            "calcular": "💡 Calcular Análise Financeira",
+            "exportar_pdf": "📄 Exportar PDF",
+            "recomendacoes": "📝 Recomendações",
+        },
+        "en": {
+            "nome_analista": "Analyst Name",
+            "informe_analista": "Please provide the analyst's name to proceed.",
+            "informacoes_cliente": "📌 Client Information",
+            "perfil_credito": "CREDIT PROFILE",
+            "risco_credito_externo": "External Credit Risk",
+            "calcular": "💡 Calculate Financial Analysis",
+            "exportar_pdf": "📄 Export PDF",
+            "recomendacoes": "📝 Recommendations",
+        }
+    }
+    return textos["pt" if idioma.startswith("🇧🇷") else "en"][key]
+
 # Nome do Analista
-nome_analista = st.text_input("Nome do Analista")
+nome_analista = st.text_input(text("nome_analista"))
 if not nome_analista:
-    st.warning("Por favor, informe o nome do analista para prosseguir.")
+    st.warning(text("informe_analista"))
     st.stop()
 
 # ==============================
@@ -69,7 +98,12 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
         "Baixo Risco": 1,
         "Médio Risco": 0,
         "Alto Risco": -1,
-        "Muito Alto Risco": -2
+        "Muito Alto Risco": -2,
+        "Very Low Risk": 2,
+        "Low Risk": 1,
+        "Medium Risk": 0,
+        "High Risk": -1,
+        "Very High Risk": -2
     }
     score += ajuste_externo.get(risco_credito_externo, 0)
 
@@ -83,8 +117,6 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
 
     # --- Limite de crédito ---
     fatura_mensal = (contas_receber / prazo_faturamento) * 30  
-
-    # Fatores de ajuste
     fator_prazo = 1 + min(prazo_faturamento / 60, 0.2)
     fator_rating = {"A":1.2, "B":1.0, "C":0.8, "D":0.5, "E":0.3}.get(rating,1)
     fator_margem = 1 + (min(indicadores['Margem Líquida (%)'], 15)/100)
@@ -101,58 +133,64 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
 
     limite_credito_ajustado = fatura_mensal * fator_prazo * fator_rating * fator_margem * fator_caixa * fator_passivo * fator_alavancagem
 
-    # Perfil pessimista
     if perfil.upper() == "PESSIMISTA": limite_credito_ajustado *= 0.7
     if rating == "E": limite_credito_ajustado = 1
 
     indicadores['Limite de Crédito Sugerido (R$)'] = round(limite_credito_ajustado, 2)
     return indicadores
 
-def recomendacoes(rating):
-    rec = {
+def recomendacoes(rating, idioma="pt"):
+    rec_pt = {
         "A": "Cliente saudável para crédito. Monitorar apenas fluxos futuros.",
         "B": "Cliente com bom histórico. Revisar condições de pagamento periódicas.",
         "C": "Risco moderado. Avaliar garantias e limites de crédito.",
         "D": "Risco elevado. Exigir garantias adicionais e reduzir limites.",
         "E": "Alto risco. Evitar concessão de crédito sem garantias sólidas."
     }
-    return rec.get(rating, "Sem recomendação")
+    rec_en = {
+        "A": "Healthy client for credit. Monitor only future cash flows.",
+        "B": "Client with good history. Review payment terms periodically.",
+        "C": "Moderate risk. Evaluate guarantees and credit limits.",
+        "D": "High risk. Require additional guarantees and reduce limits.",
+        "E": "Very high risk. Avoid granting credit without solid guarantees."
+    }
+    return rec_pt[rating] if idioma=="pt" else rec_en[rating]
 
 # ==============================
 # 2️⃣ Layout Interativo
 # ==============================
-st.subheader("📌 Informações do Cliente")
+st.subheader(text("informacoes_cliente"))
 col1, col2 = st.columns(2)
 
 with col1:
-    nome_cliente = st.text_input("Nome do Cliente")
-    data_analise = st.date_input("Data da Análise", datetime.date.today())
-    contas_receber = st.number_input("Contas a Receber (R$)", min_value=0.0)
-    ativo_circ = st.number_input("Ativo Circulante (R$)", min_value=0.0)
-    estoque = st.number_input("Estoques (R$)", min_value=0.0)
-    ativo_total = st.number_input("Ativo Total (R$)", min_value=0.0)
-    receita = st.number_input("Receita Líquida (R$)", min_value=0.0)
+    nome_cliente = st.text_input("Nome do Cliente" if idioma=="pt" else "Client Name")
+    data_analise = st.date_input("Data da Análise" if idioma=="pt" else "Analysis Date", datetime.date.today())
+    contas_receber = st.number_input("Contas a Receber (R$)" if idioma=="pt" else "Accounts Receivable (R$)", min_value=0.0)
+    ativo_circ = st.number_input("Ativo Circulante (R$)" if idioma=="pt" else "Current Assets (R$)", min_value=0.0)
+    estoque = st.number_input("Estoques (R$)" if idioma=="pt" else "Inventory (R$)", min_value=0.0)
+    ativo_total = st.number_input("Ativo Total (R$)" if idioma=="pt" else "Total Assets (R$)", min_value=0.0)
+    receita = st.number_input("Receita Líquida (R$)" if idioma=="pt" else "Net Revenue (R$)", min_value=0.0)
     ebitda = st.number_input("EBITDA (R$)", min_value=0.0)
-    caixa = st.number_input("Caixa Disponível (R$)", min_value=0.0)
-    observacao = st.text_area("Observação (ex.: este relatório é apenas uma sugestão)", 
-                              value="Este relatório é apenas uma sugestão e não deve ser usado como decisão final.")
+    caixa = st.number_input("Caixa Disponível (R$)" if idioma=="pt" else "Available Cash (R$)", min_value=0.0)
+    observacao = st.text_area("Observação (ex.: este relatório é apenas uma sugestão)" if idioma=="pt" else "Observation (e.g.: this report is only a suggestion)", 
+                              value="Este relatório é apenas uma sugestão e não deve ser usado como decisão final." if idioma=="pt" else "This report is only a suggestion and should not be used as final decision.")
 
 with col2:
-    passivo_circ = st.number_input("Passivo Circulante (R$)", min_value=0.0)
-    passivo_total = st.number_input("Passivo Total (R$)", min_value=0.0)
-    dividas = st.number_input("Dívidas Totais (R$)", min_value=0.0)
-    patrimonio = st.number_input("Patrimônio Líquido (R$)", min_value=0.0)
-    lucro = st.number_input("Lucro Líquido (R$)")
-    prazo_faturamento = st.number_input("Prazo médio de faturamento (dias)", min_value=1)
-    risco_credito_externo = st.selectbox("Risco de Crédito Externo", 
-                                         ["Muito Baixo Risco", "Baixo Risco", "Médio Risco", "Alto Risco", "Muito Alto Risco"])
+    passivo_circ = st.number_input("Passivo Circulante (R$)" if idioma=="pt" else "Current Liabilities (R$)", min_value=0.0)
+    passivo_total = st.number_input("Passivo Total (R$)" if idioma=="pt" else "Total Liabilities (R$)", min_value=0.0)
+    dividas = st.number_input("Dívidas Totais (R$)" if idioma=="pt" else "Total Debts (R$)", min_value=0.0)
+    patrimonio = st.number_input("Patrimônio Líquido (R$)" if idioma=="pt" else "Equity (R$)", min_value=0.0)
+    lucro = st.number_input("Lucro Líquido (R$)" if idioma=="pt" else "Net Profit (R$)")
+    prazo_faturamento = st.number_input("Prazo médio de faturamento (dias)" if idioma=="pt" else "Average Billing Term (days)", min_value=1)
+    risco_credito_externo = st.selectbox(text("risco_credito_externo"), 
+                                         ["Muito Baixo Risco", "Baixo Risco", "Médio Risco", "Alto Risco", "Muito Alto Risco"] if idioma=="pt" else ["Very Low Risk", "Low Risk", "Medium Risk", "High Risk", "Very High Risk"])
 
-perfil = st.selectbox("PERFIL DE CRÉDITO", ["NORMAL", "PESSIMISTA"])
+perfil = st.selectbox(text("perfil_credito"), ["NORMAL", "PESSIMISTA"] if idioma=="pt" else ["NORMAL", "PESSIMISTIC"])
 
 # ==============================
 # 3️⃣ Botão de cálculo
 # ==============================
-if st.button("💡 Calcular Análise Financeira"):
+if st.button(text("calcular")):
     resultado = analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total,
                                    passivo_circ, passivo_total, dividas, patrimonio, lucro, ebitda,
                                    caixa, prazo_faturamento, perfil=perfil, 
@@ -184,11 +222,11 @@ if st.button("💡 Calcular Análise Financeira"):
     st.markdown(f"**⭐ Rating do Cliente:** <span style='color:{cores_rating[rating]}; font-size:20px'>{rating}</span>", unsafe_allow_html=True)
 
     # Recomendações
-    st.subheader("📝 Recomendações")
-    st.info(recomendacoes(rating))
+    st.subheader(text("recomendacoes"))
+    st.info(recomendacoes(rating, idioma="pt" if idioma.startswith("🇧🇷") else "en"))
 
     # ----- PDF -----
-    st.subheader("📄 Exportar PDF")
+    st.subheader(text("exportar_pdf"))
     pdf_buffer = io.BytesIO()
     with PdfPages(pdf_buffer) as pdf:
         plt.figure(figsize=(8,11))
@@ -210,7 +248,7 @@ if st.button("💡 Calcular Análise Financeira"):
     pdf_buffer.seek(0)
 
     st.download_button(
-        label="📥 Baixar PDF",
+        label="📥 Baixar PDF" if idioma=="pt" else "📥 Download PDF",
         data=pdf_buffer,
         file_name=f"Relatorio_{nome_cliente}.pdf",
         mime="application/pdf"
