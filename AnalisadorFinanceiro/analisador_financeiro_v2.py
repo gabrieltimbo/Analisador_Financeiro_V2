@@ -302,9 +302,9 @@ if st.button(txt("calcular")):
     st.subheader(txt("recomendacoes"))
     st.info(recomendacoes(rating, idioma))
 
-    # ----- PDF -----
-    st.subheader(txt("exportar_pdf"))
-
+# ======================
+# ----- PDF -----
+# ======================
 import io
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -321,12 +321,7 @@ def gerar_pdf(nome_cliente, data_analise, nome_analista, risco_credito_externo,
     styles = getSampleStyleSheet()
     elementos = []
 
-    # Logo + título
-    if logo_path:
-        try:
-            elementos.append(Image(logo_path, width=80, height=50))
-        except:
-            pass
+    # Título (sem logo)
     elementos.append(Paragraph("<b>Relatório Financeiro do Cliente</b>", styles["Title"]))
     elementos.append(Spacer(1, 12))
 
@@ -389,20 +384,22 @@ def gerar_pdf(nome_cliente, data_analise, nome_analista, risco_credito_externo,
     buffer.seek(0)
     return buffer
 
+# -------------------------------
+# Botão de gerar PDF (apenas após cálculo)
+# -------------------------------
+if 'resultado' in st.session_state:
+    if st.button(txt("exportar_pdf")):
+        pdf_buffer = gerar_pdf(
+            nome_cliente, data_analise, nome_analista, risco_credito_externo,
+            contas_receber, ativo_circ, estoque, ativo_total, receita, ebitda, caixa,
+            passivo_circ, passivo_total, dividas, patrimonio, lucro, prazo_faturamento,
+            perfil, st.session_state.resultado, recomendacoes(st.session_state.resultado['Rating do Cliente'], idioma),
+            logo_path=""
+        )
 
-# ======================
-# Exemplo no Streamlit
-# ======================
-if st.button("📄 Gerar PDF"):
-    pdf_buffer = gerar_pdf(
-        nome_cliente, data_analise, nome_analista, risco_credito_externo,
-        contas_receber, ativo_circ, estoque, ativo_total, receita, ebitda, caixa,
-        passivo_circ, passivo_total, dividas, patrimonio, lucro, prazo_faturamento,
-        perfil, resultado, "Recomendação simulada", logo_path="logo.png"
-    )
-
-    st.download_button("📥 Baixar PDF",
-                       data=pdf_buffer,
-                       file_name=f"Relatorio_{nome_cliente}.pdf",
-                       mime="application/pdf")
-
+        st.download_button("📥 Baixar PDF",
+                           data=pdf_buffer,
+                           file_name=f"Relatorio_{nome_cliente}.pdf",
+                           mime="application/pdf")
+else:
+    st.info("📌 Primeiro clique em '💡 Calcular Análise Financeira' antes de gerar o PDF.")
