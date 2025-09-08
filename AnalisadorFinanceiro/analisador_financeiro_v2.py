@@ -15,7 +15,7 @@ import datetime
 import io
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak
 
 # ==============================
@@ -24,17 +24,28 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 st.set_page_config(page_title="Analisador Financeiro", layout="wide")
 st.title("🔒 Analisador Financeiro de Clientes")
 
-# Nome do analista
-nome_analista = st.text_input("Nome do Analista")
-if not nome_analista:
-    st.warning("Informe o nome do analista para prosseguir.")
+# ==============================
+# 0.1 Autenticação
+# ==============================
+if 'autenticado' not in st.session_state:
+    st.session_state['autenticado'] = False
+
+if not st.session_state['autenticado']:
+    nome_analista = st.text_input("Nome do Analista")
+    senha = st.text_input("Digite a senha para acessar o app", type="password")
+    
+    if st.button("🔑 Entrar"):
+        if not nome_analista:
+            st.warning("Informe o nome do analista.")
+        elif senha != "minhaSenhaSegura":
+            st.error("Senha incorreta! Acesso negado.")
+        else:
+            st.session_state['autenticado'] = True
+            st.session_state['nome_analista'] = nome_analista
+            st.success(f"Bem-vindo(a), {nome_analista}!")
     st.stop()
 
-# Senha
-senha = st.text_input("Digite a senha para acessar o app", type="password")
-if senha != "minhaSenhaSegura":
-    st.warning("Senha incorreta! Acesso negado.")
-    st.stop()
+nome_analista = st.session_state['nome_analista']
 
 # ==============================
 # 1️⃣ Inputs do cliente
@@ -72,17 +83,11 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
                        caixa, prazo_faturamento, perfil="NORMAL", risco_credito_externo="Médio Risco"):
 
     indicadores = {}
-
-    # Liquidez
     indicadores['Liquidez Corrente'] = round((ativo_circ / passivo_circ) if passivo_circ else 0, 2)
     indicadores['Liquidez Seca'] = round(((ativo_circ - estoque) / passivo_circ) if passivo_circ else 0, 2)
-
-    # Estrutura de Capital
     indicadores['Endividamento Total (%)'] = round((passivo_total / ativo_total) * 100 if ativo_total else 0, 2)
     indicadores['Composição do Endividamento (%)'] = round((passivo_circ / passivo_total) * 100 if passivo_total else 0, 2)
     indicadores['Alavancagem (Dívida / PL)'] = round((dividas / patrimonio) if patrimonio else 0, 2)
-
-    # Rentabilidade
     indicadores['Margem Líquida (%)'] = round((lucro / receita) * 100 if receita else 0, 2)
     indicadores['EBITDA / Receita (%)'] = round((ebitda / receita) * 100 if receita else 0, 2)
     indicadores['ROE (%)'] = round((lucro / patrimonio) * 100 if patrimonio else 0, 2)
@@ -102,15 +107,12 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
     elif score >= 3: rating = "D"
     else: rating = "E"
 
-    # Ajuste pelo risco externo
     ordem_rating = ["A", "B", "C", "D", "E"]
     impacto = {"Muito Baixo Risco": -1, "Baixo Risco": -1, "Médio Risco":0,
                "Alto Risco":1, "Muito Alto Risco":1}
     idx = ordem_rating.index(rating)
-    novo_idx = idx + impacto.get(risco_credito_externo, 0)
-    novo_idx = min(max(novo_idx,0),4)
+    novo_idx = min(max(idx + impacto.get(risco_credito_externo, 0), 0), 4)
     rating_final = ordem_rating[novo_idx]
-
     indicadores['Rating do Cliente'] = rating_final
 
     # Limite de crédito
@@ -120,16 +122,13 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
     fator_rating = rating_map.get(rating_final, 1)
     fator_margem = min(1, 1 + min(indicadores['Margem Líquida (%)'],15)/100)
     fator_caixa = min(1, 0.3 + min(caixa/(dividas+1e-6),0.5))
-
     comp_passivo_circ = indicadores['Composição do Endividamento (%)']/100
     if comp_passivo_circ>0.6: fator_passivo = 0.5
     elif comp_passivo_circ>0.4: fator_passivo = 0.7
     else: fator_passivo = 1
-
     if indicadores['Alavancagem (Dívida / PL)']>5: fator_alavancagem = 0.5
     elif indicadores['Alavancagem (Dívida / PL)']>3: fator_alavancagem = 0.7
     else: fator_alavancagem =1
-
     limite_credito = fatura_mensal * fator_prazo * fator_rating * fator_margem * fator_caixa * fator_passivo * fator_alavancagem
     if perfil.upper()=="PESSIMISTA": limite_credito *=0.7
     if rating_final=="E": limite_credito = 1
@@ -153,9 +152,13 @@ def recomendacoes(rating):
 # 4️⃣ Botão de cálculo e exibição KPIs
 # ==============================
 if st.button("💡 Calcular Análise Financeira"):
-    resultado = analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total,
+    st.session_state['resultado'] = analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total,
                                    passivo_circ, passivo_total, dividas, patrimonio, lucro, ebitda,
                                    caixa, prazo_faturamento, perfil, risco_credito_externo)
+    st.success("✅ Análise Financeira Calculada com sucesso!")
+
+if 'resultado' in st.session_state:
+    resultado = st.session_state['resultado']
     st.subheader("📊 KPIs Financeiros")
     for k,v in resultado.items():
         st.metric(label=k, value=f"R$ {v:,.2f}" if "R$" in k else f"{v}")
@@ -240,19 +243,3 @@ def gerar_pdf(nome_cliente, data_analise, nome_analista, risco_credito_externo,
     buffer.seek(0)
     return buffer
 
-# ==============================
-# 6️⃣ Botão gerar PDF
-# ==============================
-if st.button("📄 Gerar PDF"):
-    if 'resultado' not in locals():
-        st.warning("📌 Primeiro clique em '💡 Calcular Análise Financeira' antes de gerar o PDF.")
-    else:
-        pdf_buffer = gerar_pdf(
-            nome_cliente, data_analise, nome_analista, risco_credito_externo,
-            contas_receber, ativo_circ, estoque, ativo_total, receita, ebitda, caixa,
-            passivo_circ, passivo_total, dividas, patrimonio, lucro, prazo_faturamento,
-            perfil, resultado, recomendacoes(resultado['Rating do Cliente'])
-        )
-        st.download_button("📥 Baixar PDF", data=pdf_buffer,
-                           file_name=f"Relatorio_{nome_cliente}.pdf",
-                           mime="application/pdf")
