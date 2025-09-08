@@ -304,24 +304,105 @@ if st.button(txt("calcular")):
 
     # ----- PDF -----
     st.subheader(txt("exportar_pdf"))
-    pdf_buffer = io.BytesIO()
-    with PdfPages(pdf_buffer) as pdf:
-        plt.figure(figsize=(8,11))
-        plt.axis('off')
-        texto = f"Relatório Financeiro do Cliente\n\n"
-        texto += f"Cliente: {nome_cliente}\nData da Análise: {data_analise}\n"
-        texto += f"Analista: {nome_analista}\nObservação: Este relatório é apenas uma sugestão.\n\n"
-        texto += f"Risco de Crédito Externo: {risco_credito_externo}\n"
-        texto += f"=== Inputs Registrados ===\n"
-        texto += f"Contas a Receber: R$ {contas_receber:,.2f}\nAtivo Circulante: R$ {ativo_circ:,.2f}\nEstoques: R$ {estoque:,.2f}\nAtivo Total: R$ {ativo_total:,.2f}\n"
-        texto += f"Receita Líquida: R$ {receita:,.2f}\nEBITDA: R$ {ebitda:,.2f}\nCaixa: R$ {caixa:,.2f}\n"
-        texto += f"Passivo Circulante: R$ {passivo_circ:,.2f}\nPassivo Total: R$ {passivo_total:,.2f}\nDívidas Totais: R$ {dividas:,.2f}\nPatrimônio Líquido: R$ {patrimonio:,.2f}\nLucro Líquido: R$ {lucro:,.2f}\n"
-        texto += f"Prazo médio de faturamento: {prazo_faturamento} dias\nPerfil de Crédito: {perfil}\n\n"
-        texto += f"=== Indicadores Calculados ===\n"
-        for k,v in resultado.items():
-            texto += f"{k}: {v}\n"
-        plt.text(0,1, texto, ha='left', va='top', fontsize=10, wrap=True)
-        pdf.savefig()
-        plt.close()
-    pdf_buffer.seek(0)
-    st.download_button(label="📥 Baixar PDF", data=pdf_buffer, file_name=f"Relatorio_{nome_cliente}.pdf", mime="application/pdf")
+
+import io
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+
+def gerar_pdf(nome_cliente, data_analise, nome_analista, risco_credito_externo, 
+              contas_receber, ativo_circ, estoque, ativo_total, receita, ebitda, caixa, 
+              passivo_circ, passivo_total, dividas, patrimonio, lucro, prazo_faturamento, 
+              perfil, resultado, recomendacao, logo_path=""):
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    styles = getSampleStyleSheet()
+    elementos = []
+
+    # Logo + título
+    if logo_path:
+        try:
+            elementos.append(Image(logo_path, width=80, height=50))
+        except:
+            pass
+    elementos.append(Paragraph("<b>Relatório Financeiro do Cliente</b>", styles["Title"]))
+    elementos.append(Spacer(1, 12))
+
+    # Dados principais
+    dados_cliente = [
+        ["Cliente:", nome_cliente],
+        ["Data da Análise:", str(data_analise)],
+        ["Analista:", nome_analista],
+        ["Risco de Crédito Externo:", risco_credito_externo],
+        ["Perfil de Crédito:", perfil],
+    ]
+    tabela_dados = Table(dados_cliente, colWidths=[150, 300])
+    tabela_dados.setStyle(TableStyle([("BACKGROUND",(0,0),(0,-1), colors.lightgrey),
+                                      ("GRID",(0,0),(-1,-1),0.5,colors.grey)]))
+    elementos.append(tabela_dados)
+    elementos.append(Spacer(1, 20))
+
+    # Inputs
+    elementos.append(Paragraph("<b>📌 Inputs Registrados</b>", styles["Heading2"]))
+    dados_inputs = [
+        ["Contas a Receber", f"R$ {contas_receber:,.2f}"],
+        ["Ativo Circulante", f"R$ {ativo_circ:,.2f}"],
+        ["Estoques", f"R$ {estoque:,.2f}"],
+        ["Ativo Total", f"R$ {ativo_total:,.2f}"],
+        ["Receita Líquida", f"R$ {receita:,.2f}"],
+        ["EBITDA", f"R$ {ebitda:,.2f}"],
+        ["Caixa", f"R$ {caixa:,.2f}"],
+        ["Passivo Circulante", f"R$ {passivo_circ:,.2f}"],
+        ["Passivo Total", f"R$ {passivo_total:,.2f}"],
+        ["Dívidas Totais", f"R$ {dividas:,.2f}"],
+        ["Patrimônio Líquido", f"R$ {patrimonio:,.2f}"],
+        ["Lucro Líquido", f"R$ {lucro:,.2f}"],
+        ["Prazo Médio de Faturamento", f"{prazo_faturamento} dias"]
+    ]
+    tabela_inputs = Table(dados_inputs, colWidths=[200, 250])
+    tabela_inputs.setStyle(TableStyle([("BACKGROUND",(0,0),(0,-1), colors.whitesmoke),
+                                       ("GRID",(0,0),(-1,-1),0.5,colors.grey)]))
+    elementos.append(tabela_inputs)
+    elementos.append(Spacer(1, 20))
+
+    # Indicadores calculados
+    elementos.append(Paragraph("<b>📊 Indicadores Calculados</b>", styles["Heading2"]))
+    dados_indicadores = [[k, f"{v}"] for k,v in resultado.items()]
+    tabela_indicadores = Table(dados_indicadores, colWidths=[250, 200])
+    tabela_indicadores.setStyle(TableStyle([("BACKGROUND",(0,0),(0,-1), colors.whitesmoke),
+                                            ("GRID",(0,0),(-1,-1),0.5,colors.grey)]))
+    elementos.append(tabela_indicadores)
+    elementos.append(Spacer(1, 20))
+
+    # Recomendações
+    elementos.append(Paragraph("<b>📝 Recomendações</b>", styles["Heading2"]))
+    elementos.append(Paragraph(recomendacao, styles["Normal"]))
+    elementos.append(Spacer(1, 40))
+
+    # Assinatura
+    elementos.append(Paragraph("__________________________________", styles["Normal"]))
+    elementos.append(Paragraph(f"Assinatura do Analista - {nome_analista}", styles["Normal"]))
+
+    doc.build(elementos)
+    buffer.seek(0)
+    return buffer
+
+
+# ======================
+# Exemplo no Streamlit
+# ======================
+if st.button("📄 Gerar PDF"):
+    pdf_buffer = gerar_pdf(
+        nome_cliente, data_analise, nome_analista, risco_credito_externo,
+        contas_receber, ativo_circ, estoque, ativo_total, receita, ebitda, caixa,
+        passivo_circ, passivo_total, dividas, patrimonio, lucro, prazo_faturamento,
+        perfil, resultado, "Recomendação simulada", logo_path="logo.png"
+    )
+
+    st.download_button("📥 Baixar PDF",
+                       data=pdf_buffer,
+                       file_name=f"Relatorio_{nome_cliente}.pdf",
+                       mime="application/pdf")
+
