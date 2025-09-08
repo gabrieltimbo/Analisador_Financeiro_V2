@@ -7,7 +7,6 @@ Original file is located at
     https://colab.research.google.com/drive/1KSwhMO_2MysN-c6GuPZgl3tWv3ysM63s
 """
 
-# -*- coding: utf-8 -*-
 """Analisador Financeiro Global"""
 
 import streamlit as st
@@ -166,14 +165,27 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
     rating_final = ajustar_rating_com_risco_externo(rating, risco_credito_externo)
     indicadores['Rating do Cliente'] = rating_final
 
-    # --- Limite de crédito realista ---
+    # ==============================
+    # 🚨 NOVA LÓGICA DO LIMITE
+    # ==============================
     fatura_mensal = (contas_receber / prazo_faturamento) * 30  
 
-    fator_prazo = 1 + min(prazo_faturamento / 60, 0.2)
-    fator_rating = {"A":1.2, "B":1.0, "C":0.8, "D":0.5, "E":0.3}.get(rating_final,1)
-    fator_margem = 1 + (min(indicadores['Margem Líquida (%)'], 15)/100)
-    fator_caixa = 0.3 + min(caixa / (dividas + 1e-6), 0.5)
+    # Fator de prazo (máx +10%)
+    fator_prazo = 1 + min(prazo_faturamento / 120, 0.1)
 
+    # Fator de rating (nunca aumenta, só reduz ou mantém)
+    rating_map = {"A":1.0, "B":1.0, "C":0.9, "D":0.7, "E":0.3}
+    fator_rating = rating_map.get(rating_final, 1)
+
+    # Fator de margem (protege risco, nunca aumenta limite)
+    fator_margem = 1 + min(indicadores['Margem Líquida (%)'], 15) / 100
+    fator_margem = min(fator_margem, 1)
+
+    # Fator de caixa (segurança, nunca aumenta acima do base)
+    fator_caixa = 0.3 + min(caixa / (dividas + 1e-6), 0.5)
+    fator_caixa = min(fator_caixa, 1)
+
+    # Fator de passivo
     comp_passivo_circ = indicadores['Composição do Endividamento (%)'] / 100
     if comp_passivo_circ > 0.6:
         fator_passivo = 0.5
@@ -182,6 +194,7 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
     else:
         fator_passivo = 1
 
+    # Fator de alavancagem
     if indicadores['Alavancagem (Dívida / PL)'] > 5:
         fator_alavancagem = 0.5
     elif indicadores['Alavancagem (Dívida / PL)'] > 3:
@@ -189,16 +202,26 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
     else:
         fator_alavancagem = 1
 
-    limite_credito_ajustado = fatura_mensal * fator_prazo * fator_rating * fator_margem * fator_caixa * fator_passivo * fator_alavancagem
+    # Limite final
+    limite_credito_ajustado = (
+        fatura_mensal * fator_prazo * fator_rating *
+        fator_margem * fator_caixa * fator_passivo * fator_alavancagem
+    )
 
+    # Ajuste de perfil pessimista
     if perfil.upper() == "PESSIMISTA":
         limite_credito_ajustado *= 0.7
+
+    # Rating E = limite mínimo
     if rating_final == "E":
         limite_credito_ajustado = 1
 
     indicadores['Limite de Crédito Sugerido (R$)'] = round(limite_credito_ajustado, 2)
     return indicadores
 
+# ==============================
+# 3️⃣ Recomendações
+# ==============================
 def recomendacoes(rating, idioma="pt"):
     rec_pt = {
         "A": "Cliente saudável para crédito. Monitorar apenas fluxos futuros.",
@@ -217,7 +240,7 @@ def recomendacoes(rating, idioma="pt"):
     return rec_pt.get(rating) if idioma=="pt" else rec_en.get(rating)
 
 # ==============================
-# 3️⃣ Layout Interativo
+# 4️⃣ Layout Interativo
 # ==============================
 st.subheader(txt("informacoes_cliente"))
 col1, col2 = st.columns(2)
@@ -247,7 +270,7 @@ with col2:
 perfil = st.selectbox(txt("perfil_credito"), ["NORMAL","PESSIMISTA"] if idioma=="pt" else ["NORMAL","PESSIMISTIC"])
 
 # ==============================
-# 4️⃣ Botão de cálculo
+# 5️⃣ Botão de cálculo
 # ==============================
 if st.button(txt("calcular")):
     resultado = analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total,
