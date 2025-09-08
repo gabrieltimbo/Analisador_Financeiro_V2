@@ -174,7 +174,7 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
     fator_prazo = 1 + min(prazo_faturamento / 120, 0.1)
 
     # Fator de rating (nunca aumenta, só reduz ou mantém)
-    rating_map = {"A":1.0, "B":1.0, "C":0.9, "D":0.7, "E":0.3}
+    rating_map = {"A":1.0, "B":0.9, "C":0.7, "D":0.5, "E":0.3}
     fator_rating = rating_map.get(rating_final, 1)
 
     # Fator de margem (protege risco, nunca aumenta limite)
