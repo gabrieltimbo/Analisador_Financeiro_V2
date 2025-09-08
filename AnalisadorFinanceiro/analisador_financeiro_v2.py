@@ -7,13 +7,17 @@ Original file is located at
     https://colab.research.google.com/drive/1KSwhMO_2MysN-c6GuPZgl3tWv3ysM63s
 """
 
-"""Analisador Financeiro Global"""
+# -*- coding: utf-8 -*-
+"""Analisador Financeiro"""
 
 import streamlit as st
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
 import io
 import datetime
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 
 # ==============================
 # 0️⃣ Login e idioma
@@ -47,7 +51,7 @@ else:
 idioma = st.session_state.idioma
 
 # ==============================
-# 1️⃣ Dicionário de labels
+# 1️⃣ Labels
 # ==============================
 labels = {
     "pt": {
@@ -150,7 +154,7 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
         rating = "E"
     indicadores['Rating Interno'] = rating
 
-    # Ajuste pelo risco externo limitado a 1 letra
+    # Ajuste pelo risco externo
     def ajustar_rating_com_risco_externo(rating_interno, risco_externo):
         ordem_rating = ["A", "B", "C", "D", "E"]
         idx = ordem_rating.index(rating_interno)
@@ -165,54 +169,25 @@ def analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total
     rating_final = ajustar_rating_com_risco_externo(rating, risco_credito_externo)
     indicadores['Rating do Cliente'] = rating_final
 
-    # ==============================
-    # 🚨 NOVA LÓGICA DO LIMITE
-    # ==============================
-    fatura_mensal = (contas_receber / prazo_faturamento) * 30  
-
-    # Fator de prazo (máx +10%)
+    # Limite de crédito
+    fatura_mensal = (contas_receber / prazo_faturamento) * 30
     fator_prazo = 1 + min(prazo_faturamento / 120, 0.1)
-
-    # Fator de rating (nunca aumenta, só reduz ou mantém)
     rating_map = {"A":1.0, "B":0.9, "C":0.7, "D":0.5, "E":0.3}
     fator_rating = rating_map.get(rating_final, 1)
-
-    # Fator de margem (protege risco, nunca aumenta limite)
-    fator_margem = 1 + min(indicadores['Margem Líquida (%)'], 15) / 100
-    fator_margem = min(fator_margem, 1)
-
-    # Fator de caixa (segurança, nunca aumenta acima do base)
-    fator_caixa = 0.3 + min(caixa / (dividas + 1e-6), 0.5)
-    fator_caixa = min(fator_caixa, 1)
-
-    # Fator de passivo
+    fator_margem = min(1, 1 + min(indicadores['Margem Líquida (%)'], 15)/100)
+    fator_caixa = min(1, 0.3 + min(caixa / (dividas + 1e-6), 0.5))
     comp_passivo_circ = indicadores['Composição do Endividamento (%)'] / 100
-    if comp_passivo_circ > 0.6:
-        fator_passivo = 0.5
-    elif comp_passivo_circ > 0.4:
-        fator_passivo = 0.7
-    else:
-        fator_passivo = 1
+    fator_passivo = 0.5 if comp_passivo_circ > 0.6 else 0.7 if comp_passivo_circ > 0.4 else 1
+    alav = indicadores['Alavancagem (Dívida / PL)']
+    fator_alavancagem = 0.5 if alav > 5 else 0.7 if alav > 3 else 1
 
-    # Fator de alavancagem
-    if indicadores['Alavancagem (Dívida / PL)'] > 5:
-        fator_alavancagem = 0.5
-    elif indicadores['Alavancagem (Dívida / PL)'] > 3:
-        fator_alavancagem = 0.7
-    else:
-        fator_alavancagem = 1
-
-    # Limite final
     limite_credito_ajustado = (
         fatura_mensal * fator_prazo * fator_rating *
         fator_margem * fator_caixa * fator_passivo * fator_alavancagem
     )
 
-    # Ajuste de perfil pessimista
     if perfil.upper() == "PESSIMISTA":
         limite_credito_ajustado *= 0.7
-
-    # Rating E = limite mínimo
     if rating_final == "E":
         limite_credito_ajustado = 1
 
@@ -255,10 +230,9 @@ with col1:
     receita = st.number_input(txt("receita"), min_value=0.0)
     ebitda = st.number_input(txt("ebitda"), min_value=0.0)
     caixa = st.number_input(txt("caixa"), min_value=0.0)
-    risco_credito_externo = st.selectbox(txt("risco_credito_externo"), 
-                                         ["Muito Baixo Risco","Baixo Risco","Médio Risco","Alto Risco","Muito Alto Risco"] 
+    risco_credito_externo = st.selectbox(txt("risco_credito_externo"),
+                                         ["Muito Baixo Risco","Baixo Risco","Médio Risco","Alto Risco","Muito Alto Risco"]
                                          if idioma=="pt" else ["Very Low Risk","Low Risk","Medium Risk","High Risk","Very High Risk"])
-
 with col2:
     passivo_circ = st.number_input(txt("passivo_circ"), min_value=0.0)
     passivo_total = st.number_input(txt("passivo_total"), min_value=0.0)
@@ -270,13 +244,18 @@ with col2:
 perfil = st.selectbox(txt("perfil_credito"), ["NORMAL","PESSIMISTA"] if idioma=="pt" else ["NORMAL","PESSIMISTIC"])
 
 # ==============================
-# 5️⃣ Botão de cálculo
+# 5️⃣ Botão de cálculo e PDF
 # ==============================
 if st.button(txt("calcular")):
-    resultado = analise_financeira(contas_receber, receita, ativo_circ, estoque, ativo_total,
-                                   passivo_circ, passivo_total, dividas, patrimonio, lucro, ebitda,
-                                   caixa, prazo_faturamento, perfil=perfil,
-                                   risco_credito_externo=risco_credito_externo)
+    st.session_state.resultado = analise_financeira(
+        contas_receber, receita, ativo_circ, estoque, ativo_total,
+        passivo_circ, passivo_total, dividas, patrimonio, lucro, ebitda,
+        caixa, prazo_faturamento, perfil=perfil,
+        risco_credito_externo=risco_credito_externo
+    )
+
+if 'resultado' in st.session_state:
+    resultado = st.session_state.resultado
 
     # ----- KPIs -----
     st.subheader("📊 KPIs Financeiros")
@@ -302,104 +281,53 @@ if st.button(txt("calcular")):
     st.subheader(txt("recomendacoes"))
     st.info(recomendacoes(rating, idioma))
 
-# ======================
-# ----- PDF -----
-# ======================
-import io
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+    # -------------------------------
+    # Botão de gerar PDF
+    # -------------------------------
+    def gerar_pdf(nome_cliente, data_analise, nome_analista, risco_credito_externo,
+                  contas_receber, ativo_circ, estoque, ativo_total, receita, ebitda, caixa,
+                  passivo_circ, passivo_total, dividas, patrimonio, lucro, prazo_faturamento,
+                  perfil, resultado, rec_cliente, logo_path=""):
 
-def gerar_pdf(nome_cliente, data_analise, nome_analista, risco_credito_externo, 
-              contas_receber, ativo_circ, estoque, ativo_total, receita, ebitda, caixa, 
-              passivo_circ, passivo_total, dividas, patrimonio, lucro, prazo_faturamento, 
-              perfil, resultado, recomendacao, logo_path=""):
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4)
+        elements = []
+        styles = getSampleStyleSheet()
 
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
-    styles = getSampleStyleSheet()
-    elementos = []
+        elements.append(Paragraph(f"Relatório Financeiro - {nome_cliente}", styles['Title']))
+        elements.append(Spacer(1,12))
+        elements.append(Paragraph(f"Analista: {nome_analista}", styles['Normal']))
+        elements.append(Paragraph(f"Data: {data_analise}", styles['Normal']))
+        elements.append(Spacer(1,12))
 
-    # Título (sem logo)
-    elementos.append(Paragraph("<b>Relatório Financeiro do Cliente</b>", styles["Title"]))
-    elementos.append(Spacer(1, 12))
+        # KPIs
+        data_table = [[k, v] for k,v in resultado.items()]
+        table = Table(data_table, colWidths=[200,200])
+        table.setStyle(TableStyle([
+            ('BACKGROUND',(0,0),(-1,0),colors.grey),
+            ('TEXTCOLOR',(0,0),(-1,0),colors.whitesmoke),
+            ('ALIGN',(0,0),(-1,-1),'LEFT'),
+            ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),
+            ('BOTTOMPADDING',(0,0),(-1,0),12),
+            ('BACKGROUND',(0,1),(-1,-1),colors.beige)
+        ]))
+        elements.append(table)
+        elements.append(Spacer(1,12))
+        elements.append(Paragraph(f"Recomendações: {rec_cliente}", styles['Normal']))
 
-    # Dados principais
-    dados_cliente = [
-        ["Cliente:", nome_cliente],
-        ["Data da Análise:", str(data_analise)],
-        ["Analista:", nome_analista],
-        ["Risco de Crédito Externo:", risco_credito_externo],
-        ["Perfil de Crédito:", perfil],
-    ]
-    tabela_dados = Table(dados_cliente, colWidths=[150, 300])
-    tabela_dados.setStyle(TableStyle([("BACKGROUND",(0,0),(0,-1), colors.lightgrey),
-                                      ("GRID",(0,0),(-1,-1),0.5,colors.grey)]))
-    elementos.append(tabela_dados)
-    elementos.append(Spacer(1, 20))
+        doc.build(elements)
+        buffer.seek(0)
+        return buffer
 
-    # Inputs
-    elementos.append(Paragraph("<b>📌 Inputs Registrados</b>", styles["Heading2"]))
-    dados_inputs = [
-        ["Contas a Receber", f"R$ {contas_receber:,.2f}"],
-        ["Ativo Circulante", f"R$ {ativo_circ:,.2f}"],
-        ["Estoques", f"R$ {estoque:,.2f}"],
-        ["Ativo Total", f"R$ {ativo_total:,.2f}"],
-        ["Receita Líquida", f"R$ {receita:,.2f}"],
-        ["EBITDA", f"R$ {ebitda:,.2f}"],
-        ["Caixa", f"R$ {caixa:,.2f}"],
-        ["Passivo Circulante", f"R$ {passivo_circ:,.2f}"],
-        ["Passivo Total", f"R$ {passivo_total:,.2f}"],
-        ["Dívidas Totais", f"R$ {dividas:,.2f}"],
-        ["Patrimônio Líquido", f"R$ {patrimonio:,.2f}"],
-        ["Lucro Líquido", f"R$ {lucro:,.2f}"],
-        ["Prazo Médio de Faturamento", f"{prazo_faturamento} dias"]
-    ]
-    tabela_inputs = Table(dados_inputs, colWidths=[200, 250])
-    tabela_inputs.setStyle(TableStyle([("BACKGROUND",(0,0),(0,-1), colors.whitesmoke),
-                                       ("GRID",(0,0),(-1,-1),0.5,colors.grey)]))
-    elementos.append(tabela_inputs)
-    elementos.append(Spacer(1, 20))
-
-    # Indicadores calculados
-    elementos.append(Paragraph("<b>📊 Indicadores Calculados</b>", styles["Heading2"]))
-    dados_indicadores = [[k, f"{v}"] for k,v in resultado.items()]
-    tabela_indicadores = Table(dados_indicadores, colWidths=[250, 200])
-    tabela_indicadores.setStyle(TableStyle([("BACKGROUND",(0,0),(0,-1), colors.whitesmoke),
-                                            ("GRID",(0,0),(-1,-1),0.5,colors.grey)]))
-    elementos.append(tabela_indicadores)
-    elementos.append(Spacer(1, 20))
-
-    # Recomendações
-    elementos.append(Paragraph("<b>📝 Recomendações</b>", styles["Heading2"]))
-    elementos.append(Paragraph(recomendacao, styles["Normal"]))
-    elementos.append(Spacer(1, 40))
-
-    # Assinatura
-    elementos.append(Paragraph("__________________________________", styles["Normal"]))
-    elementos.append(Paragraph(f"Assinatura do Analista - {nome_analista}", styles["Normal"]))
-
-    doc.build(elementos)
-    buffer.seek(0)
-    return buffer
-
-# -------------------------------
-# Botão de gerar PDF (apenas após cálculo)
-# -------------------------------
-if 'resultado' in st.session_state:
     if st.button(txt("exportar_pdf")):
         pdf_buffer = gerar_pdf(
             nome_cliente, data_analise, nome_analista, risco_credito_externo,
             contas_receber, ativo_circ, estoque, ativo_total, receita, ebitda, caixa,
             passivo_circ, passivo_total, dividas, patrimonio, lucro, prazo_faturamento,
-            perfil, st.session_state.resultado, recomendacoes(st.session_state.resultado['Rating do Cliente'], idioma),
-            logo_path=""
+            perfil, resultado,
+            recomendacoes(resultado['Rating do Cliente'], idioma)
         )
-
         st.download_button("📥 Baixar PDF",
                            data=pdf_buffer,
                            file_name=f"Relatorio_{nome_cliente}.pdf",
                            mime="application/pdf")
-else:
-    st.info("📌 Primeiro clique em '💡 Calcular Análise Financeira' antes de gerar o PDF.")
