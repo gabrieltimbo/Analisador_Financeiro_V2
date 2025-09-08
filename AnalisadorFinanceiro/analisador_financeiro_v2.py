@@ -308,26 +308,57 @@ if st.button(txt("calcular")):
     st.subheader(txt("recomendacoes"))
     st.info(recomendacoes(rating, idioma))
 
-    # ----- PDF -----
-    st.subheader(txt("exportar_pdf"))
-    pdf_buffer = io.BytesIO()
-    with PdfPages(pdf_buffer) as pdf:
-        plt.figure(figsize=(8,11))
-        plt.axis('off')
-        texto = f"Relatório Financeiro do Cliente\n\n"
-        texto += f"Cliente: {nome_cliente}\nData da Análise: {data_analise}\n"
-        texto += f"Analista: {nome_analista}\nObservação: Este relatório é apenas uma sugestão.\n\n"
-        texto += f"Risco de Crédito Externo: {risco_credito_externo}\n"
-        texto += f"=== Inputs Registrados ===\n"
-        texto += f"Contas a Receber: R$ {contas_receber:,.2f}\nAtivo Circulante: R$ {ativo_circ:,.2f}\nEstoques: R$ {estoque:,.2f}\nAtivo Total: R$ {ativo_total:,.2f}\n"
-        texto += f"Receita Líquida: R$ {receita:,.2f}\nEBITDA: R$ {ebitda:,.2f}\nCaixa: R$ {caixa:,.2f}\n"
-        texto += f"Passivo Circulante: R$ {passivo_circ:,.2f}\nPassivo Total: R$ {passivo_total:,.2f}\nDívidas Totais: R$ {dividas:,.2f}\nPatrimônio Líquido: R$ {patrimonio:,.2f}\nLucro Líquido: R$ {lucro:,.2f}\n"
-        texto += f"Prazo médio de faturamento: {prazo_faturamento} dias\nPerfil de Crédito: {perfil}\n\n"
-        texto += f"=== Indicadores Calculados ===\n"
-        for k,v in resultado.items():
-            texto += f"{k}: {v}\n"
-        plt.text(0,1, texto, ha='left', va='top', fontsize=10, wrap=True)
-        pdf.savefig()
-        plt.close()
-    pdf_buffer.seek(0)
-    st.download_button(label="📥 Baixar PDF", data=pdf_buffer, file_name=f"Relatorio_{nome_cliente}.pdf", mime="application/pdf")
+   # ----- PDF ----- 
+st.subheader(txt("exportar_pdf"))
+pdf_buffer = io.BytesIO()
+with PdfPages(pdf_buffer) as pdf:
+    plt.figure(figsize=(8.5,11))
+    plt.axis('off')
+    
+    # Cabeçalho
+    texto = f"🔹 Relatório Financeiro do Cliente 🔹\n"
+    texto += f"Data da Análise: {data_analise}\nAnalista: {nome_analista}\n\n"
+    
+    # Observações
+    texto += "⚠️ Observações: Este relatório apresenta uma análise financeira sugerida com base nas informações fornecidas. Não substitui auditoria ou decisão legal.\n\n"
+    
+    # Inputs - Tabela simplificada
+    texto += "=== Inputs Registrados ===\n"
+    inputs = {
+        "Contas a Receber": contas_receber,
+        "Ativo Circulante": ativo_circ,
+        "Estoques": estoque,
+        "Ativo Total": ativo_total,
+        "Receita Líquida": receita,
+        "EBITDA": ebitda,
+        "Caixa": caixa,
+        "Passivo Circulante": passivo_circ,
+        "Passivo Total": passivo_total,
+        "Dívidas Totais": dividas,
+        "Patrimônio Líquido": patrimonio,
+        "Lucro Líquido": lucro,
+        "Prazo Médio Faturamento (dias)": prazo_faturamento,
+        "Perfil de Crédito": perfil,
+        "Risco Externo": risco_credito_externo
+    }
+    for k,v in inputs.items():
+        texto += f"{k}: R$ {v:,.2f}\n" if isinstance(v,(int,float)) else f"{k}: {v}\n"
+    
+    # Indicadores Calculados
+    texto += "\n=== Indicadores Financeiros ===\n"
+    for k,v in resultado.items():
+        texto += f"{k}: {v}\n"
+    
+    # Recomendações
+    texto += f"\n=== Recomendações ===\n{recomendacoes(rating, idioma)}\n\n"
+    
+    # Assinatura
+    texto += "\n\n_________________________\nAssinatura do Analista\n"
+    texto += "_________________________\nAutorização Diretoria\n"
+    
+    plt.text(0,1, texto, ha='left', va='top', fontsize=10, wrap=True)
+    pdf.savefig()
+    plt.close()
+
+pdf_buffer.seek(0)
+st.download_button(label="📥 Baixar PDF", data=pdf_buffer, file_name=f"Relatorio_{nome_cliente}.pdf", mime="application/pdf")
