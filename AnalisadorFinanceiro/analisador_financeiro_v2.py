@@ -196,9 +196,9 @@ def analise_financeira(
 
     # Fator de alavancagem
     if indicadores['Alavancagem (Dívida / PL)'] > 5:
-        fator_alavancagem = 0.5
+        fator_alavancagem = 0.3
     elif indicadores['Alavancagem (Dívida / PL)'] > 3:
-        fator_alavancagem = 0.7
+        fator_alavancagem = 0.5
     else:
         fator_alavancagem = 1
 
